@@ -1,0 +1,310 @@
+# ML in Elixir Chapter 3
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.5"},
+  {:exla, "~> 0.5"},
+  {:kino, "~> 0.8"},
+  {:stb_image, "~> 0.6"},
+  {:vega_lite, "~> 0.1"},
+  {:kino_vega_lite, "~> 0.1"}
+])
+```
+
+## Section
+
+
+
+```elixir
+Nx.default_backend(EXLA.Backend)
+```
+
+### Tensor Examples
+
+The Tensors below are all size 3 and represent a list of values.
+
+```elixir
+a = Nx.tensor([1, 2, 3])
+```
+
+```elixir
+Nx.tensor([4, 5, 6.0])
+```
+
+```elixir
+Nx.tensor([1, 0, 1], type: {:u, 8})
+```
+
+### Scalars
+
+Both examples below are scalars.
+
+```elixir
+tensor_scalar_5 = Nx.tensor(5)
+```
+
+```elixir
+normal_scalar_5 = 5
+```
+
+### Matrix Example
+
+```elixir
+goog_current_price = 2677.32
+goog_pe = 23.86
+goog_mkt_cap = 1760
+meta_current_price = 133.93
+meta_pe = 11.10
+meta_mkt_cap = 360
+```
+
+```elixir
+stocks_matrix =
+  Nx.tensor([
+    [goog_current_price, goog_pe, goog_mkt_cap],
+    [meta_current_price, meta_pe, meta_mkt_cap]
+  ])
+```
+
+### Linear Algebra Examples
+
+```elixir
+sales_day_1 = Nx.tensor([32, 10, 14])
+sales_day_2 = Nx.tensor([10, 24, 21])
+
+total_sales = Nx.add(sales_day_1, sales_day_2)
+```
+
+```elixir
+keep_rate = 0.9
+unreturned_sales = Nx.multiply(keep_rate, total_sales)
+```
+
+```elixir
+price_per_product = Nx.tensor([9.95, 10.95, 5.99])
+revenue_per_product = Nx.multiply(price_per_product, unreturned_sales)
+```
+
+### Transpose
+
+```elixir
+sales_matrix =
+  Nx.tensor(
+    [
+      [32, 10, 14],
+      [10, 24, 21]
+    ],
+    names: [:day, :sales]
+  )
+```
+
+```elixir
+Nx.transpose(sales_matrix)
+```
+
+### Creating Row-vectors and Column-vectors
+
+```elixir
+column_vector = Nx.tensor([[1, 2, 3]], names: [:x, :y])
+```
+
+```elixir
+row_vector = Nx.transpose(column_vector)
+```
+
+```elixir
+Nx.tensor([[1], [2], [3]])
+```
+
+```elixir
+Nx.eye(3) |> Nx.negate()
+```
+
+```elixir
+Nx.eye(3) |> Nx.put_diagonal(Nx.tensor([-1, -1, -1]))
+```
+
+```elixir
+invert_color_channels = Nx.eye(3) |> Nx.multiply(-1)
+```
+
+```elixir
+"/Users/gardo/Desktop/cat.jpg"
+|> StbImage.read_file!()
+|> StbImage.resize(256, 256)
+|> StbImage.to_nx()
+|> Nx.dot(invert_color_channels)
+|> Nx.as_type({:u, 8})
+|> Kino.Image.new()
+```
+
+### Dot operations and matrix multiplication
+
+```elixir
+# 1 x 1 = 1, 2 x 2 = 4, 3 x 3 = 9
+# 1 + 4 + 9 = 14
+vector = Nx.dot(Nx.tensor([1, 2, 3]), Nx.tensor([1, 2, 3]))
+```
+
+```elixir
+vector_matrix = Nx.dot(Nx.tensor([1, 2]), Nx.tensor([[1], [2]]))
+```
+
+```elixir
+matrix_a = Nx.tensor([[1, 2]])
+```
+
+```elixir
+matrix_b = Nx.tensor([[3], [4]])
+```
+
+```elixir
+matrix_matrix = Nx.dot(matrix_a, matrix_b)
+```
+
+```elixir
+simulation =
+  fn key ->
+    {value, key} = Nx.Random.uniform(key)
+
+    if Nx.to_number(value) < 0.5 do
+      {0, key}
+    else
+      {1, key}
+    end
+  end
+```
+
+```elixir
+key = Nx.Random.key(43)
+
+for n <- [10, 100, 1000, 10000] do
+  Enum.map_reduce(1..n, key, fn _, key -> simulation.(key) end)
+  |> elem(0)
+  |> Enum.sum()
+  |> IO.inspect()
+end
+```
+
+```elixir
+random_num = Nx.Random.key(27)
+```
+
+```elixir
+Nx.Random.uniform(random_num)
+```
+
+### Derivative Example
+
+```elixir
+defmodule GuavaFarm do
+  import Nx.Defn
+
+  defn profits(trees) do
+    trees
+    |> Nx.subtract(1)
+    |> Nx.pow(4)
+    |> Nx.negate()
+    |> Nx.add(Nx.pow(trees, 3))
+    |> Nx.add(Nx.pow(trees, 2))
+  end
+
+  defn profits_v2(trees) do
+    -((trees - 1) ** 4) + trees ** 3 + trees ** 2
+  end
+
+  defn profits_derivative(trees) do
+    grad(trees, &profits/1)
+  end
+end
+```
+
+```elixir
+trees = Nx.linspace(0, 4, n: 100)
+```
+
+```elixir
+profits = GuavaFarm.profits(trees)
+```
+
+```elixir
+alias VegaLite, as: Vl
+```
+
+```elixir
+Vl.new(title: "Guava Profits", width: 1440, height: 1080)
+|> Vl.data_from_values(%{
+  trees: Nx.to_flat_list(trees),
+  profits: Nx.to_flat_list(profits)
+})
+|> Vl.mark(:line, interpolate: :basis)
+|> Vl.encode_field(:x, "trees", type: :quantitative)
+|> Vl.encode_field(:y, "profits", type: :quantitative)
+```
+
+```elixir
+profits = GuavaFarm.profits_v2(trees)
+
+Vl.new(title: "Guava Profits", width: 1440, height: 1080)
+|> Vl.data_from_values(%{
+  trees: Nx.to_flat_list(trees),
+  profits: Nx.to_flat_list(profits)
+})
+|> Vl.mark(:line, interpolate: :basis)
+|> Vl.encode_field(:x, "trees", type: :quantitative)
+|> Vl.encode_field(:y, "profits", type: :quantitative)
+```
+
+```elixir
+trees = Nx.linspace(0, 4, n: 100)
+profits = GuavaFarm.profits_v2(trees)
+profits_derivative = GuavaFarm.profits_derivative(trees)
+```
+
+```elixir
+title = "Guava Profits and Profits ROC"
+
+Vl.new(title: title, width: 1440, height: 1080)
+|> Vl.data_from_values(%{
+  trees: Nx.to_flat_list(trees),
+  profits: Nx.to_flat_list(profits),
+  profits_derivative: Nx.to_flat_list(profits_derivative)
+})
+|> Vl.layers([
+  Vl.new()
+  |> Vl.mark(:line, interpolate: :basis)
+  |> Vl.encode_field(:x, "trees", type: :quantitative)
+  |> Vl.encode_field(:y, "profits", type: :quantitative),
+  Vl.new()
+  |> Vl.mark(:line, interpolate: :basis)
+  |> Vl.encode_field(:x, "trees", type: :quantitative)
+  |> Vl.encode_field(:y, "profits_derivative", type: :quantitative)
+  |> Vl.encode(:color, value: "#ff0000")
+])
+```
+
+### Automatic Differentiation
+
+```elixir
+defmodule GradFun do
+  import Nx.Defn
+
+  defn my_function(x) do
+    x
+    |> Nx.cos()
+    |> Nx.exp()
+    |> Nx.sum()
+    |> print_expr()
+  end
+
+  defn grad_my_function(x) do
+    x
+    |> grad(&my_function/1)
+    |> print_expr()
+  end
+end
+```
+
+```elixir
+GradFun.grad_my_function(Nx.tensor([1.0, 2.0, 3.0]))
+```
